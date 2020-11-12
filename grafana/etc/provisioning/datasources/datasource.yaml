@@ -1,0 +1,38 @@
+apiVersion: 1
+
+datasources:
+  # InfluxDB demo database
+  - name: influxdb
+    type: influxdb
+    access: proxy
+    database: demo
+    user: root
+    password: 5up3rS3cr3t
+    #url: http://influxdb:8086
+    url: http://influxdb-proxy:8086
+  # InfluxDB _internal
+  - name: influxdb-internal-node-0
+    type: influxdb
+    access: proxy
+    database: _internal
+    user: root
+    password: 5up3rS3cr3t
+    #url: http://influxdb:8086
+    url: http://influxdb-protector-node-0:8086
+  - name: influxdb-internal-node-1
+    type: influxdb
+    access: proxy
+    database: _internal
+    user: root
+    password: 5up3rS3cr3t
+    #url: http://influxdb:8086
+    url: http://influxdb-protector-node-1:8086
+  # Prometheus
+  - name: prom-direct
+    type: prometheus
+    access: proxy
+    orgId: 1
+    uid: ds_prom_direct
+    url: http://prometheus:9090
+    version: 1
+    editable: true

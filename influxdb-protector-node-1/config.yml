@@ -1,0 +1,22 @@
+appname: influxdb-protector
+version: 0.7.0
+
+# Log level
+# panic, fatal, error, warn, info, debug, trace
+loglevel: debug
+
+# Server configuration
+#
+server:
+  port: "8086"
+  buckets: 1000
+  # default max duration 2160h (90 days)
+  #max-duration: 2160
+  slow-query: 1000
+
+# InfluxDB configuration
+#
+influxdb:
+  host: "influxdb-node-1"
+  port: "8086"
+  ssl: false

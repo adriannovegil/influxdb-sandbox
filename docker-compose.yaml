@@ -1,0 +1,201 @@
+version: '3.8'
+services:
+
+  # InfluxDB
+  # ============================================================================
+  influxdb-node-0:
+    container_name: influxdb-node-0
+    image: influxdb:1.8.3-alpine
+    volumes:
+      - ./influxdb/etc:/etc/influxdb
+      - influxdb-lib-node-0:/var/lib/influxdb
+    ports:
+      - 8084:8083
+      - 8087:8086
+    privileged: true
+
+  influxdb-node-1:
+    container_name: influxdb-node-1
+    image: influxdb:1.8.3-alpine
+    volumes:
+      - ./influxdb/etc:/etc/influxdb
+      - influxdb-lib-node-0:/var/lib/influxdb
+    ports:
+      - 8085:8083
+      - 8088:8086
+    privileged: true
+
+  # Protection
+  # ============================================================================
+  # InfluxDB Protector
+  influxdb-protector-node-0:
+    image: local/influxdb-protector
+    container_name: influxdb-protector-node-0
+    volumes:
+      - ./influxdb-protector-node-0/config.yml:/app/config.yml
+    depends_on:
+      - influxdb-node-0
+    ports:
+      - 8089:8086
+
+  influxdb-protector-node-1:
+    image: local/influxdb-protector
+    container_name: influxdb-protector-node-1
+    volumes:
+      - ./influxdb-protector-node-1/config.yml:/app/config.yml
+    depends_on:
+      - influxdb-node-1
+    ports:
+      - 8090:8086
+
+  # HA
+  # ============================================================================
+  influxdb-relay-0:
+    build: ./influxdb-relay
+    image: local/influxdb-relay
+    container_name: influxdb-relay-0
+    environment:
+      HTTP_BACKEND_influxdb0: influxdb-protector-node-0:8086
+      HTTP_BACKEND_influxdb1: influxdb-protector-node-1:8086
+    depends_on:
+      - influxdb-protector-node-0
+      - influxdb-protector-node-1
+
+  influxdb-relay-1:
+    image: local/influxdb-relay
+    container_name: influxdb-relay-1
+    environment:
+      HTTP_BACKEND_influxdb0: influxdb-protector-node-0:8086
+      HTTP_BACKEND_influxdb1: influxdb-protector-node-1:8086
+    depends_on:
+      - influxdb-protector-node-0
+      - influxdb-protector-node-1
+
+  influxdb-proxy:
+    build: ./influxdb-proxy
+    image: local/influxdb-proxy
+    container_name: influxdb-proxy
+    ports:
+      - "8086:8086"
+      - "8083:8083"
+    environment:
+      BACKEND_influxdb0: influxdb-protector-node-0:8086:8083
+      BACKEND_influxdb1: influxdb-protector-node-1:8086:8083
+      RELAY_influxdb0: influxdb-relay-0:9096
+      RELAY_influxdb1: influxdb-relay-1:9096
+    depends_on:
+      - influxdb-relay-0
+      - influxdb-relay-1
+      - influxdb-protector-node-0
+      - influxdb-protector-node-1
+
+  # Observability
+  # ============================================================================
+  # Chronograf
+  chronograf:
+    image: chronograf:1.8.6-alpine
+    container_name: trickster-chronograf
+    environment:
+      INFLUXDB_URL: http://influxdb-node-0:8086,http://influxdb-node-1:8086
+      INFLUXDB_USERNAME: ${INFLUXDB_ADMIN_USER}
+      INFLUXDB_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+    ports:
+      - 8888:8888
+
+  # Node exporter
+  nodeexporter:
+    image: prom/node-exporter:latest
+    user: root
+    privileged: true
+    labels:
+      container_group: monitoring
+    volumes:
+      - /:/rootfs:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - --collector.filesystem.ignored-mount-points
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    ports:
+      - '9100:9100'
+
+  # cadvisor
+  cadvisor:
+    image: google/cadvisor:latest
+    container_name: cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    ports:
+      - 8181:8080
+
+  # InfluxDB exporter
+  influxdb-exporter-node-0:
+    image: "${INFLUXDB_EXPORTER_IMAGE_NAME}:${INFLUXDB_EXPORTER_IMAGE_VERSION}"
+    container_name: influxdb-exporter-node-0
+    restart: 'always'
+    environment:
+      INFLUX_URL: http://influxdb-node-0:8086
+      INFLUX_USER: ${INFLUXDB_ADMIN_USER}
+      INFLUX_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+    ports:
+    - 9424:9424
+
+  influxdb-exporter-node-1:
+    image: "${INFLUXDB_EXPORTER_IMAGE_NAME}:${INFLUXDB_EXPORTER_IMAGE_VERSION}"
+    container_name: influxdb-exporter-node-1
+    restart: 'always'
+    environment:
+      INFLUX_URL: http://influxdb-node-1:8086
+      INFLUX_USER: ${INFLUXDB_ADMIN_USER}
+      INFLUX_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+    ports:
+    - 9425:9424
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.17.2
+    container_name: trickster-prometheus-mon
+    restart: always
+    volumes:
+      - ./prometheus:/etc/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.path=/prometheus'
+      - "--storage.tsdb.retention=744h"
+    depends_on:
+      - cadvisor
+    ports:
+      - 9090:9090
+
+  # Grafana
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:7.2.0
+    volumes:
+      - ./grafana/etc:/etc/grafana:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-lib:/var/lib/grafana
+      - grafana-log:/var/log/grafana
+    ports:
+      - 3000:3000
+    depends_on:
+      - influxdb-protector-node-0
+      - influxdb-protector-node-1
+    privileged: true
+
+volumes:
+  influxdb-lib-node-0:
+    external: false
+  influxdb-lib-node-1:
+    external: false
+  grafana-lib:
+    external: false
+  grafana-log:
+    external: false

@@ -1,0 +1,36 @@
+apiVersion: 1
+
+providers:
+  - name: 'InfluxDB'
+    orgId: 1
+    folder: 'influxdb'
+    folderUid: ''
+    type: file
+    disableDeletion: true
+    editable: true
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/influxdb
+  - name: 'Docker Containers'
+    orgId: 1
+    folder: 'docker'
+    folderUid: ''
+    type: file
+    disableDeletion: true
+    editable: true
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/docker
+  - name: 'Host'
+    orgId: 1
+    folder: 'host'
+    folderUid: ''
+    type: file
+    disableDeletion: true
+    editable: true
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/host
